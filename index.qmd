@@ -1,0 +1,596 @@
+---
+title: "PBMC scRNA-seq Analysis Report"
+author: "Eylul"
+format: html
+editor: visual
+code-fold: true
+toc: true
+fig-width: 8
+fig-height: 6
+fig-dpi: 300
+execute: 
+  warning: false
+  message: false
+---
+
+```{r}
+library(Seurat)
+library(tidyverse)
+
+pbmc_filtered <- readRDS("pbmc_filtered.rds")
+```
+
+```{r}
+markers <- list(
+  CD4_T = c("CD3D", "CD3E", "CD4", "IL7R", "CCR7"),
+  CD8_T = c("CD3D", "CD3E", "CD8A", "CD8B", "GZMK"),
+  NK = c("NKG7", "GNLY", "KLRD1", "PRF1"),
+  B = c("MS4A1", "CD79A", "CD79B", "BANK1"),
+  Plasma = c("MZB1", "JCHAIN", "IGHG1"),
+  CD14_Monocyte = c("LYZ", "LST1", "S100A8", "S100A9"),
+  FCGR3A_Monocyte = c("FCGR3A", "MS4A7", "LST1"),
+  DC = c("FCER1A", "CST3", "CLEC10A"),
+  pDC = c("GZMB", "IRF7", "TCF4", "IL3RA"),
+  Platelet = c("PDBP", "PF4", "GP9")
+)
+```
+
+\## Introduction and Biological Background
+
+Peripheral Blood Mononuclear Cells (PBMCs) are critical components of the human immune system, characterized by a round, single-lobed nucleus. The circulates in the peripheral bloodstream and comprise heterogeneous mixture of immune cells that play vital roles in adaptive and innate immunity:
+
+**\* \*\*T Lymphocytes (T cells):**\*\* Central to cell-mediated immunity, comprising major subsets such as CD4 T helper cells (expressing \**CD3D*\*, \**CD3E*\*, \**CD4*\*, \**IL7R*\*, \**CCR7*\*) which coordinate immune responses, and CD8 + Cytotoxic T cells (expressing \**CD8A*\*, \**CD8B*\*, \**GZMK*\*) which target infected or malignent cells.
+
+**\* \*\*B Lymphocytes (B cells):**\*\* Responsible for humoral immunity and antibody production, identified by markers like \**MS4A1*\* (CD20), \**CD79A*\*, and \**CD79B*\*, alongside differentiated antibody-secreting Plasma cells (\**MZB1*\*, \**JCHAIN*\*).
+
+**\* \*\*Natural Killer (NK) Cells:**\*\* Innate lymphoid cells providing rapid responses against viral infections and tumors, characterized by high expression of \**NKG7*\*, \**GNLY*\*, \**KLRD1*\*, and \**PRF1*\*.
+
+**\* \*\*Monocytes:**\*\* Innate immune cells involved in phagocytosis and immune regulation, divided into classical CD14 + Monocytes (\**LYZ*\*, \**S100A8*\*, \**S100A9*\*) and non-classical FCGR3A + Monocytes (\**FGCR3A*\*, \**MS4A7*\*).
+
+\* \*\***Dendritic Cells (DCs & pDCs):**\*\* Professional antigen-presenting cells bridging innate and adaptive immunity, marked by \**FCER1A*\*, \**CST3*\* (conventional DCs) and \**IRF7*\*, \**IL3RA*\* (plasmacytoid DCs).
+
+\## Dataset Description
+
+This project utilizes a multi-sample single-cell RNA sequencing (scRNA-seq) dataset consisting of approxmately 20,000 human PBMCs obtained from 10x Genomics, representing four distinct healthy donors (Donors 1-4). This multiplexed experimental design allows us to evaluate inter-sample heterogeneity, verify technical reproducibility, and robustly characterize major immune cell populations at single-cell resolution.
+
+```         
+```
+```{r}
+
+```
+
+
+```{r}
+cluster_markers <- readRDS("cluster_markers.rds")
+
+head(cluster_markers, n = 15)
+```
+
+```{r}
+cell_type_names <- c(
+  "0" = "CD4+ T cells",
+  "1" = "CD8+ T cells",
+  "2" = "CD14+ Monocytes",
+  "3" = "B cells",
+  "4" = "NK cells",
+  "5" = "Dendritic cells",
+  "6" = "Platelets",
+  "7" = "Memory CD4 T",
+  "8" = "B cells",
+  "9" = "CD14+ Monocytes",
+  "10" = "NK cells",
+  "11" = "DC",
+  "12" = "Platelets",
+  "13" = "T cells",
+  "14" = "B cells",
+  "15" = "Monocytes",
+  "16" = "Other"
+)
+marker_df <- data.frame(
+  Gene = cluster_markers$gene,
+  CellType = cell_type_names[as.character(cluster_markers$cluster)]
+)
+
+write.csv(marker_df, "data/merker_genes_pbmc.csv", row.names = FALSE)
+
+
+```
+
+
+
+\## Day 3: Quality Control (QC)
+
+To ensure high-quality data for downstream analysis, we perform quality control filtering on the single-cell RNA sequencing data. This includes calculating mitochondrial gene percentages ("percent.mt") to filter out dying or damaged cells, as well as examining gene and UMI counts ("nFeature_RNA" and "nCount_RNA").
+
+```{r}
+library(Seurat)
+library(tidyverse)
+
+h5_files <- list.files("data", pattern = ".h5$", full.names = TRUE)
+
+counts_donor1 <- Read10X_h5(h5_files[1])
+donor1 <- CreateSeuratObject(counts = counts_donor1, project = "Donor1", min.cells = 3, min.features = 200)
+
+donor1[["percent.mt"]] <- PercentageFeatureSet(donor1, pattern = "^MT-")
+
+donor1$donor <- "Donor1"
+donor1$sex <- "Female"
+donor1$age_group <- "Adult"
+
+head(donor1@meta.data, 5)
+```
+
+```{r}
+counts_donor2 <- Read10X_h5(h5_files[2])
+donor2 <- CreateSeuratObject(counts = counts_donor2, project = "Donor2", min.cells = 3, min.features = 200)
+donor2[["percent.mt"]] <- PercentageFeatureSet(donor2, pattern = "^MT-")
+donor2$donor <- "Donor2"
+donor2$sex <- "Female"
+donor2$age_group <- "Adult"
+
+head(donor2@meta.data, 5)
+```
+
+```{r}
+counts_donor3 <- Read10X_h5(h5_files[3])
+donor3 <- CreateSeuratObject(counts = counts_donor3, project = "Donor3", min.cells = 3, min.features = 200)
+donor3[["percent.mt"]] <- PercentageFeatureSet(donor3, pattern = "^MT-")
+donor3$donor <- "Donor3"
+donor3$sex <- "Male"
+donor3$age_group <- "Adult"
+
+head(donor3@meta.data, 5)
+
+```
+
+```{r}
+counts_donor4 <- Read10X_h5(h5_files[4])
+donor4 <- CreateSeuratObject(counts = counts_donor4, project = "Donor4", min.cells = 3, min.features = 200)
+donor4[["percent.mt"]] <- PercentageFeatureSet(donor4, pattern = "^MT-")
+donor4$donor <- "Donor4"
+donor4$sex <- "Male"
+donor4$age_group <- "Adult"
+
+head(donor4@meta.data, 5)
+```
+
+```{r}
+library(ggplot2)
+pbmc_filtered <- merge(donor1, y = c(donor2, donor3, donor4),
+                       add.cell.ids = c("D1", "D2", "D3", "D4"),
+                       project = "PBMC_QC")
+
+pbmc_filtered <- subset(pbmc_filtered, subset = nFeature_RNA > 200 & nFeature_RNA < 4000 & percent.mt < 5)
+
+
+
+pbmc_filtered <- NormalizeData(pbmc_filtered)
+pbmc_filtered <- FindVariableFeatures(pbmc_filtered)
+pbmc_filtered <- ScaleData(pbmc_filtered)
+pbmc_filtered <- RunPCA(pbmc_filtered)
+
+pbmc_filtered <- IntegrateLayers(
+  object = pbmc_filtered,
+  method = RPCAIntegration,
+  new.reduction = "integrated.dr",
+  verbose = FALSE
+)
+
+pbmc_filtered <- FindNeighbors(pbmc_filtered, reduction = "integrated.dr", dims = 1:30)
+pbmc_filtered <- FindClusters(pbmc_filtered, resolution = 0.5)
+pbmc_filtered <- RunUMAP(pbmc_filtered, reduction = "integrated.dr", dims = 1:30)
+
+DimPlot(pbmc_filtered, reduction = "umap", group.by = "seurat_clusters", label = TRUE) +
+  ggtitle("UMAP - Integrated Clusters")
+
+DimPlot(pbmc_filtered, reduction = "umap", group.by = "orig.ident") +
+  ggtitle("UMAP - Integrated by Donor")
+```
+```{r, eval=TRUE, echo=TRUE}
+Idents(pbmc_filtered) <- pbmc_filtered$seurat_clusters
+
+new.cluster.ids <- c(
+  "0" = "CD4+ T cells", "1" = "CD8+ T cells", "2" = "CD14+ Monocytes",
+  "3" = "B cells", "4" = "NK cells", "5" = "Dendritic cells",
+  "6" = "Platelets", "7" = "Memory CD4 T", "8" = "B cells",
+  "9" = "CD14+ Monocytes", "10" = "NK cells", "11" = "DC",
+  "12" = "Platelets", "13" = "T cells",  "14" = "B cells",
+  "15" = "Monocytes", "16" = "other"
+)
+
+
+
+pbmc_filtered <- RenameIdents(pbmc_filtered, new.cluster.ids)
+pbmc_filtered$celltype <- Idents(pbmc_filtered)
+
+print(
+  DimPlot(pbmc_filtered, reduction = "umap", label = FALSE, pt.size = 0.5) +
+    labs(title = "Annotated PBMC Cell Types")
+)
+
+
+```
+
+```{r}
+plot1 <- FeatureScatter(pbmc_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "donor")
+
+plot2 <- FeatureScatter(pbmc_filtered, feature1 = "nCount_RNA", feature2 = "percent.mt", group.by = "donor")
+
+plot1 + plot2
+```
+
+```{r}
+pbmc_filtered <- subset(pbmc_filtered,
+                        subset = nFeature_RNA > 200 &
+                          nFeature_RNA < 6000 &
+                          percent.mt < 15)
+pbmc_filtered
+```
+
+Quality Control (QC) and Filtering
+
+To ensure high data quality for downstream analysis, low-quality cells, empty droplets, and potential doublets were filtered out based on quality control metrics.
+
+QC Metrics Visualization
+
+We generated violin plots and scatter plots for nFeature_RNA , nCount_RNA, and percent.mt across all four donors to assess data distribution.
+
+\# Violin Plots
+
+VlnPlot(pbmc_combined, feature = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, group.by = "donor")
+
+Filtering Tresholds and Decision
+
+Based on standard single-cell RNA sequencing guidlines, we applied the following filtering criteria:
+
+nFeature_RNA \> 200: Removes empty droplets or very low-quality cells.
+
+nFeature_RNA \< 6000: Removes potential multi-cell doublets.
+
+percent.mt \< 15: Removes damaged or dying cells with high mitochondrial RNA content.
+
+\# Filtering
+
+pbmc_filtered \<- subset(pbmc_combined,
+
+subset = nFeature_RNA \> 200 &
+
+nFeature_RNA \< 6000 &
+
+percent.mt \< 15)
+
+pbmc_filtered
+
+After filtering, 21,586 high-quality cells across 27,385 features were retained for further analysis.
+
+```{r}
+pbmc_filtered <- NormalizeData(pbmc_filtered, normalization.method = "LogNormalize", scale.factor = 10000)
+
+pbmc_filtered <- FindVariableFeatures(pbmc_filtered, selection.method = "vst", nfeatures = 2000)
+
+pbmc_filtered <- ScaleData(pbmc_filtered)
+```
+
+
+
+Normalization and Dimensionality Reduction
+
+To prepare the filtered gene expression matrix for downstream clustering and visualization, we performed data normalization, identified highly variable genes, scaled the data, and ran linear and non-linear dimensionality reduction.
+
+1.  Normalization and Variable Feature Selection
+
+First, we applied a global-scaling normalization method ("LogNormalize") that normalizes the gene expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000), and log-transforms the result. Then, we identified the top 2,000 highly variable features (genes) that drive biological heterogeneity across cells.
+
+pbmc_filtered \<- NormalizeData(pbmc_filtered, normalization.method = "LogNormalize", scale.factor = 10000)
+
+pbmc_filtered \<- FindVariableFeatures(pbmc_filtered, selection.method = "vst", nfeatures = 2000)
+
+pbmc_filtered \<- ScaleData(pbmc_filtered)
+
+2.  PCA and UMAP Dimensionality Reduction
+
+We ran Principal Component Analysis (PCA) on the scaled variable features to reduce the dimensionality of the dataset. Based on the PCA and Elbow plot evaluation, we selected the top 15 principal components (dims = 1:15) to run UMAP for 2D visualization.
+
+pbmc_filtered \<- RunPCA(pbmc_filtered, features = VariableFeatures(object = pbmc_filtered))
+
+pbmc_filtered \<- RunUMAP(pbmc_filtered, dims = 1:15)
+
+DimPlot(pbmc_filtered, reduction = "umap", group.by = "donor")
+
+UMAP Interpretation
+
+The UMAP plot colored by donor shows a well-integrated distribution across all four donors (Donor1, Donor2, Donor3, Donor4). The homogeneous mixing within the distinct cellular islands indicates that technical batch effects are minimal, and the clusters accurately reflect underlying biological cell populations.
+
+```{r}
+library(Seurat)
+pbmc_filtered <- FindNeighbors(pbmc_filtered, reduction = "integrated.dr", dims = 1:15)
+
+pbmc_filtered <- FindClusters(pbmc_filtered, resolution = c(0.2, 0.4, 0.6, 0.8))
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+
+p1 <- DimPlot(pbmc_filtered, reduction = "umap", group.by = "RNA_snn_res.0.4", label = TRUE) + ggtitle("Resolution 0.4")
+
+p2 <- DimPlot(pbmc_filtered, reduction = "umap", group.by = "RNA_snn_res.0.6", label = TRUE) + ggtitle("Resolution 0.6")
+
+p1 + p2
+```
+
+```{r}
+Idents(pbmc_filtered) <- "RNA_snn_res.0.4"
+
+DimPlot(pbmc_filtered, reduction = "umap", label = TRUE, pt.size = 0.5) + ggtitle("PBMC Clusters (Resolution 0.4)")
+```
+
+\## Clustering Interpretation
+
+Following neighborhood graph construction and resolution testing, \*\***resolution 0.4**\*\* was selected as the optimal parameter for downstream anlyses, yielding 17 distinct clusters. The UMAP visualization demonstrates clear, well- separated biological clusters corresponding to major PBMC populations (such as T cell subsets, monocytes, and other mononuclear cells) without introducing artificial over-clustering. This robust partitioning serves as the foundation for subsequent marker gene identification.
+
+```{r}
+ #| cache: true
+ if (file.exists("pbmc_markers.csv")) {
+   pbmc_markers <- read.csv("pbmc_markers.csv")
+ } else {
+   pbmc_markers <- FindAllMarkers(pbmc_filtered,
+                                  omly.pos = TRUE,
+                                  min.pct = 0.25,
+                                  logfc.treshold = 0.25)
+   write.csv(pbmc_markers, "pbmc_markers.csv", row.names = FALSE)
+ }
+```
+
+```{r}
+write.csv(pbmc_markers, file = "cluster_markers.csv", row.names = FALSE)
+
+library(dplyr)
+top10_markers <- pbmc_markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+
+head(top10_markers, 10)
+```
+
+\## Marker Gene Analysis
+
+By employing the FindAllMarkers() function with standard stringency parameters (only.pos = TRUE, min.pct = 0.25, logfc.treshold = 0.25), robust signature genes were successfully extracted for all 17 biological clusters. The resulting marker table was exported as cluster_markers.csv for documentation, allowing downstream inspection of top-expressed genes (such as IL7R, CD3D, CD14, and MS4A1) to accurately map and annotate major PBMC cell types.
+
+```{r}
+canonical_markers <- c("IL7R", "CD3D", "CD14", "LYZ", "MS4A1", "NKG7", "GNLY", "PPBP")
+
+DotPlot(pbmc_filtered, features = canonical_markers) + RotatedAxis()
+```
+
+```{r}
+library(Seurat)
+
+new.cluster.ids <- c(
+  "CD T cells",
+  "CD4 T cells",
+  "CD14+ Monocytes",
+  "CD4 T cells",
+  "CD14+ Monocytes",
+  "B cells",
+  "CD14+ Monocytes",
+  "NK cells",
+  "CD4 T cells",
+  "CD4 T cells",
+  "CD14+ Monocytes",
+  "CD4 T cells",
+  "CD14+ Monocytes",
+  "CD4 T cells",
+  "CD14+ Monocytes",
+  "Dendritic cells",
+  "Platelets"
+)
+
+names(new.cluster.ids) <- levels(pbmc_filtered)
+pbmc_filtered <- RenameIdents(pbmc_filtered, new.cluster.ids)
+
+pbmc_filtered$celltype <- Idents(pbmc_filtered)
+
+DimPlot(pbmc_filtered, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+\## Cell Type Annotation
+
+By cross-referencing cluster markers with well-established PBMC canonical genes (such as IL7R and CD3D for T cells, CD14 and LYZ for monocytes, MS4A1 for B cells, and NKG7 for NK cells), numerical clusters were successfully mapped to distinct biological populations. Using the RenameIdents() function, these labels were integrated into the Seurat object and visualized on the annotated UMAP map. This final cell type assignment confirms robust partitioning of major immune cell lineages, providing a solid foundation for subsequent donor comparison analysis.
+
+```{r}
+library(Seurat)
+
+cell_counts <- table(pbmc_filtered$orig.ident, pbmc_filtered$celltype)
+head(cell_counts)
+```
+
+```{r}
+cell_proportions <- prop.table(cell_counts, margin = 1) * 100
+cell_proportions
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(pbmc_filtered@meta.data, aes(x = orig.ident, fill = Idents(pbmc_filtered))) +
+  geom_bar(position = "fill") +
+  labs(title = "Cell Type Proportions per Donor", x = "Donor", y = "Proportion", fill = "Cell Type") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+\## Donor Comparison Interpretation
+
+To asses potential biological variations and sample-specific shifts across different individuals, cell type proportions were calculated for each donor. The stacked bar plot illustrates the relative abundance of each annotated cell population within \*\***Donor1, Donor2, Donor3, and Donor4**\*\*. While core immune populations (such as T cells and monocytes) are consistently represented across all samples, subtle variations in cell type frequencies are observable between certain donors (e.g., Donor 2). These variations reflect natural inter-individual biological differences or potential technical variations, establishing a baseline for downstream comparative analysis.
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(tidyverse)
+
+getwd()
+
+data_dir <- "data/filtered_gene_bc_matrices/hg19/"
+```
+
+```{r}
+library(Seurat)
+library(ggplot2)
+
+candidate_genes <- c("XIST", "RPS4Y1", "EIF1AX", "CD40LG", "B2M", "S100A8")
+
+existing_genes <- candidate_genes[candidate_genes %in% rownames(pbmc_filtered)]
+existing_genes
+
+FeaturePlot(pbmc_filtered, features = existing_genes, pt.size = 0.2)
+```
+
+##Interpretation Paragraph
+
+Based on the candidate gene feature plots, key markers such as XIST, RPS4Y1, B2M, and S100A8 show robust detection across distinct cell populations. Specifically, sex-associated markers successfully differentiate cell distributions, while inflammatory and age-associated markers (e.g., S100A8 in monocytes) highlight active immune states. However, while we can observe these expression patterns across individual clusters and donors, we cannot definitively attribute these variations purely to systemic sex or age differences due to the limited cohort size and lack of biological replication per demographic group.
+
+\## Reasoning Prompt
+
+The current dataset design does not allow us to cleanly separate sex effects, age effects, donor-specific biological effects, and technical batch effects. This is because biological variables are inherently confounded with donor identities in this small cohort (e.g., specific donors represent specific age and sex brackets.) To resolve this limitation and answer these biological questions convincingly, a more rigorous, expanded study design would be required-specifically incorporating a balanced multi-donor cohort with multiple individuals per age group for both biological sexes, alongside standardized technical processing.
+
+```{r}
+sex_age_candidate_genes <- data.frame(
+  Gene_Symbol = c("XIST", "RPS4Y1", "EIF1AX", "CD40LG", "B2M", "S100A8"),
+  Category = c("Sex Chromosome Expression", "Sex Chromosome Expression",
+               "X-linked Immune Relevance", "X-linked Immune Relevance",
+               "Age-associated Marker", "Age-associated marker"),
+  Relevance = c(
+    "Inactivates X chromosome in females; primary biological sex marker.",
+    "Ribosomal protein on Y chromosome; standard male cell marker.",
+    "X-linked gene escaping inactivation; regulates immune cells.",
+    "Critical for T-B cell interaction and adaptive immunity.",
+    "Upregulated in older cells due to inflammaging.",
+    "Associated with inflammaging and increased monocyte activation."
+  ),
+  Location = c("X-linked", "Y-linked", "X-linked", "X-linked", "Autosomal", "Autosomal"),
+  Source = c("ensembl/Literature", "Ensembl/Literature", "HGNC/GeneCards",
+             "HGNC/Literature", "Literature/NCBI", "Literature/GeneCards"),
+  Detectable_in_Dataset = c("Yes", "Yes", "Yes", "Yes", "Yes", "Yes")
+)
+
+print(sex_age_candidate_genes)
+
+write.csv(sex_age_candidate_genes, file = "sex_age_candidate_genes.csv", row.names = FALSE)
+```
+
+```{r}
+head(pbmc_filtered@meta.data)
+```
+
+```{r}
+colnames(pbmc_filtered@meta.data)
+```
+
+```{r}
+library(Seurat)
+cell_counts <- table(pbmc_filtered$donor, Idents(pbmc_filtered))
+cell_counts
+```
+
+```{r}
+ #| cache: true
+library(Seurat)
+
+if (file.exists("sex_de_results.rds")) {
+  sex_de_results <- readRDS(file.path(getwd(), "sex_de_results.rds"))
+} else {
+  
+  cell_types <- unique(Idents(pbmc_filtered))
+  sex_de_results <- list()
+  for (ct in cell_types) {
+    sub_obj <- subset(pbmc_filtered, idents = ct)
+    markers <- FindMarkers(sub_obj, ident.1 = "Male", ident.2 = "Female", group.by = "sex", pseudobulk = TRUE)
+    sex_de_results[[ct]] <- markers
+  }
+  saveRDS(sex_de_results, file.path(getwd(), "sex_de_results.rds"))
+}
+head(sex_de_results[[1]])
+```
+
+```{r}
+ #| cache: true
+library(Seurat)
+
+sex_chrom_genes <- c("XIST", "RPS4Y1", "KDM5D", "UTY", "ZFY", "DDX3Y", "EIF1AY", "KDM5C","TSIX", "RPS4X", "EIF1AX", "USP9Y", "TXLNGY")
+
+filtered_sex_results <- lapply(sex_de_results, function(df) {
+  df_filtered <- df[!rownames(df) %in% sex_chrom_genes, ]
+  
+  
+  df_filtered <- df_filtered[!grepl("^MT-", rownames(df_filtered)), ]
+  df_sig <- df_filtered[df_filtered$p_val_adj < 0.05, ]
+  return(df_sig)
+})
+
+lapply(filtered_sex_results, head)
+```
+
+\# Exploratory Sex-Associated Gene Expression Analysis in PBMC
+
+\## 1. Introduction and Quality Control
+
+In this analysis, we investigated sex-associated gene expression patterns across different PBMC cell types using a pseudobulk methodology. To account for biological replication properly and avoid psudoreplication errors, individual donors (\$n=4\$; 2 male, 2 female) were treated as the biological unit of analysis.
+
+Cell counts and distributions across donors were validated to ensure balanced representation:
+
+-\*\***XIST Expression**\*\*: Strongly upregulated in female donors across major cell types (\$avg/\_log2FC/approx +14.2\$, $p_{adj} = 0$).
+
+-\*\***Y-Chromosome Markers**\*\*: Highly significant expression of Y-linked genes ("UTY", "RPS4Y1", "DDX3Y", "KDM5D", "USP9Y", "TXLNGY") exclusively in male donors (\$avg/\_log2FC/approx -9\$ to $-13$, $p_{adj} = 0$).
+
+\## 2. Autosomal Gene Expression Analysis (Post-Filtering)
+
+To isolate potential immune-related autosomal gene expression differences independent of direct sex-chromosome dosage, we filtered out all known sex-chromosome genes and mitochondrial transcripts ("MT-" genes) to eliminate technical or metabolic variance.
+
+Following this rigorous filtering:
+
+-No widespread or statistically robust differential expression patterns remained across autosomal genes.
+
+-Only a minimal subset of genes ("FYB1", "LINC02899", "DISC1") showed marginal significance (\$p\_{adj}\<0.05\$).
+
+\## 3. Discussion and Limitations
+
+The primary finding confirms thatpsudobulk differential expression successfully captures core sex-linked signatures ("XIST" and Y-chromosomal genes). However, the absence of widespread autosomal differences highlights key experimental constraints:
+
+1.\*\***Sample Size:**\*\* The dataset comprises a limited cohort of 4 donors, constraining statistical power.
+
+2.\*\***Confounding Variables:**\*\* Donor age, batch effects, and individual inter-donor variability are confounded with biological sex in this specific cohort.
+
+Therefore, observed minor autosomal variations likely reflect individual donor heterogeneity rather than a broad, systemic sex-specific imune profile.
+
+```{r}
+meta_data <- pbmc_filtered@meta.data
+prop_df <- prop.table(table(meta_data$donor, meta_data$celltype), margin = 1) * 100
+prop_df <- as.data.frame(prop_df)
+colnames(prop_df) <- c("Donor", "CellType", "Proportion")
+
+donor_sex <- unique(meta_data[, c("donor", "sex")])
+prop_df <- merge(prop_df, donor_sex, by.x = "Donor", by.y = "donor")
+
+library(ggplot2)
+ggplot(prop_df, aes(x = CellType, y = Proportion, fill = sex)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+  geom_point(position = position_jitterdodge(), size = 1.5) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1)) +
+  labs(title = "Comparison of Cell Type Proportions by Sex",
+       x = "Cell Type", y = "Proportion (%)", fill = "sex")
+```
+
+```         
+```
+
+```         
+```
+
+```         
+```
+
+```         
+```
+
+```         
+```
