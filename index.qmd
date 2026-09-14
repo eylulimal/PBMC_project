@@ -35,7 +35,7 @@ markers <- list(
 )
 ```
 
-\## Introduction and Biological Background
+## Introduction and Biological Background
 
 Peripheral Blood Mononuclear Cells (PBMCs) are critical components of the human immune system, characterized by a round, single-lobed nucleus. The circulates in the peripheral bloodstream and comprise heterogeneous mixture of immune cells that play vital roles in adaptive and innate immunity:
 
@@ -49,7 +49,7 @@ Peripheral Blood Mononuclear Cells (PBMCs) are critical components of the human 
 
 \* \*\***Dendritic Cells (DCs & pDCs):**\*\* Professional antigen-presenting cells bridging innate and adaptive immunity, marked by \**FCER1A*\*, \**CST3*\* (conventional DCs) and \**IRF7*\*, \**IL3RA*\* (plasmacytoid DCs).
 
-\## Dataset Description
+## Dataset Description
 
 This project utilizes a multi-sample single-cell RNA sequencing (scRNA-seq) dataset consisting of approxmately 20,000 human PBMCs obtained from 10x Genomics, representing four distinct healthy donors (Donors 1-4). This multiplexed experimental design allows us to evaluate inter-sample heterogeneity, verify technical reproducibility, and robustly characterize major immune cell populations at single-cell resolution.
 
@@ -98,9 +98,9 @@ write.csv(marker_df, "data/merker_genes_pbmc.csv", row.names = FALSE)
 
 
 
-\## Day 3: Quality Control (QC)
+# Cell Type Proportions and Demographic Comparison
 
-To ensure high-quality data for downstream analysis, we perform quality control filtering on the single-cell RNA sequencing data. This includes calculating mitochondrial gene percentages ("percent.mt") to filter out dying or damaged cells, as well as examining gene and UMI counts ("nFeature_RNA" and "nCount_RNA").
+To further characterize the cellular composition across individual samples and investigate potential demographic influences, cell type frequencies were quantified for each donor.
 
 ```{r}
 library(Seurat)
@@ -153,7 +153,9 @@ donor4$age_group <- "Adult"
 
 head(donor4@meta.data, 5)
 ```
-
+ # Loading Donor Data and Creating Seurat Objects
+ 
+ At this stage, raw data in h5 format obtained from the 10X Genomics platform was independently imported for each donor using Read10X_h5. Separate Seurat objects(CreateSeuratObject) were generated for each sample to serve as a baseline for quality control and filtering, applying minimum tresholds of 3 cells (min.cells = 3) and 200 features (min.features = 200). Additionally, mitochondrial gene ratios(PercentageFeatureSet) were calculated to monitor cell viability, and metadata such as gender and age group for each donor were assigned to the Seurat objects. The previews shown in the tables above verify that the data was imported in the correct format and is ready for quality control filtering.
 ```{r}
 library(ggplot2)
 pbmc_filtered <- merge(donor1, y = c(donor2, donor3, donor4),
@@ -227,7 +229,7 @@ pbmc_filtered <- subset(pbmc_filtered,
 pbmc_filtered
 ```
 
-Quality Control (QC) and Filtering
+# Quality Control (QC) and Filtering
 
 To ensure high data quality for downstream analysis, low-quality cells, empty droplets, and potential doublets were filtered out based on quality control metrics.
 
@@ -235,7 +237,7 @@ QC Metrics Visualization
 
 We generated violin plots and scatter plots for nFeature_RNA , nCount_RNA, and percent.mt across all four donors to assess data distribution.
 
-\# Violin Plots
+# Violin Plots
 
 VlnPlot(pbmc_combined, feature = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, group.by = "donor")
 
@@ -273,7 +275,7 @@ pbmc_filtered <- ScaleData(pbmc_filtered)
 
 
 
-Normalization and Dimensionality Reduction
+# Normalization and Dimensionality Reduction
 
 To prepare the filtered gene expression matrix for downstream clustering and visualization, we performed data normalization, identified highly variable genes, scaled the data, and ran linear and non-linear dimensionality reduction.
 
@@ -325,9 +327,9 @@ Idents(pbmc_filtered) <- "RNA_snn_res.0.4"
 DimPlot(pbmc_filtered, reduction = "umap", label = TRUE, pt.size = 0.5) + ggtitle("PBMC Clusters (Resolution 0.4)")
 ```
 
-\## Clustering Interpretation
+## Clustering Interpretation
 
-Following neighborhood graph construction and resolution testing, \*\***resolution 0.4**\*\* was selected as the optimal parameter for downstream anlyses, yielding 17 distinct clusters. The UMAP visualization demonstrates clear, well- separated biological clusters corresponding to major PBMC populations (such as T cell subsets, monocytes, and other mononuclear cells) without introducing artificial over-clustering. This robust partitioning serves as the foundation for subsequent marker gene identification.
+Following neighborhood graph construction and resolution testing, resolution 0.4 was selected as the optimal parameter for downstream analyses, yielding distinct biological clusters. The UMAP visualization demonstrates clear, well-separated biological clusters corresponding to major PBMC populations (such as T cell subsets, monocytes, and other mononuclear cells) without introducing artificial over-clustering. This robust partitioning serves as the foundation for subsequent marker gene identification.
 
 ```{r}
  #| cache: true
@@ -351,9 +353,9 @@ top10_markers <- pbmc_markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_l
 head(top10_markers, 10)
 ```
 
-\## Marker Gene Analysis
+## Marker Gene Analysis
 
-By employing the FindAllMarkers() function with standard stringency parameters (only.pos = TRUE, min.pct = 0.25, logfc.treshold = 0.25), robust signature genes were successfully extracted for all 17 biological clusters. The resulting marker table was exported as cluster_markers.csv for documentation, allowing downstream inspection of top-expressed genes (such as IL7R, CD3D, CD14, and MS4A1) to accurately map and annotate major PBMC cell types.
+By employing the FindAllMarkers() function with standard stringency parameters (only.pos = TRUE, min.pct = 0.25, logfc.treshold = 0.25), robust signature genes were successfully extracted for all biological clusters. The resulting marker table was exported as cluster_markers.csv for documentation, allowing downstream inspection of top-expressed genes (such as IL7R, CD3D, CD14, and MS4A1) to accurately map and annotate major PBMC cell types.
 
 ```{r}
 canonical_markers <- c("IL7R", "CD3D", "CD14", "LYZ", "MS4A1", "NKG7", "GNLY", "PPBP")
@@ -392,9 +394,9 @@ pbmc_filtered$celltype <- Idents(pbmc_filtered)
 DimPlot(pbmc_filtered, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
 ```
 
-\## Cell Type Annotation
+## Cell Type Annotation
 
-By cross-referencing cluster markers with well-established PBMC canonical genes (such as IL7R and CD3D for T cells, CD14 and LYZ for monocytes, MS4A1 for B cells, and NKG7 for NK cells), numerical clusters were successfully mapped to distinct biological populations. Using the RenameIdents() function, these labels were integrated into the Seurat object and visualized on the annotated UMAP map. This final cell type assignment confirms robust partitioning of major immune cell lineages, providing a solid foundation for subsequent donor comparison analysis.
+By cross-referencing cluster markers with well-established PBMC canonical genes (such as IL7R and CD3D for T cells, CD14 and LYZ for monocytes, MS4A1 for B cells, and NKG7 for NK cells), the identified clusters were successfully mapped to distinct biological populations. Using the RenameIdents() function, these labels were integrated into the Seurat object and visualized on the annotated UMAP map. This final cell type assignment confirms robust partitioning of major immune cell lineages, providing a solid foundation for subsequent donor comparison analysis.
 
 ```{r}
 library(Seurat)
@@ -418,9 +420,9 @@ ggplot(pbmc_filtered@meta.data, aes(x = orig.ident, fill = Idents(pbmc_filtered)
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-\## Donor Comparison Interpretation
+## Donor Comparison Interpretation
 
-To asses potential biological variations and sample-specific shifts across different individuals, cell type proportions were calculated for each donor. The stacked bar plot illustrates the relative abundance of each annotated cell population within \*\***Donor1, Donor2, Donor3, and Donor4**\*\*. While core immune populations (such as T cells and monocytes) are consistently represented across all samples, subtle variations in cell type frequencies are observable between certain donors (e.g., Donor 2). These variations reflect natural inter-individual biological differences or potential technical variations, establishing a baseline for downstream comparative analysis.
+To assess potential biological variations and sample-specific shifts across different individuals, cell type proportions were calculated for each donor. The stacked bar plot illustrates the relative abundance of each annotated cell population within Donor1, Donor2, Donor3, and Donor4. While core immune populations (such as T cells and monocytes) are consistently represented across all samples, subtle variations in cell type frequencies are observable between certain donors (e.g., Donor2). These variations reflect natural inter-individual biological differences or potential technical variations, establishing a baseline for downstream comparative analysis.
 
 ```{r}
 library(Seurat)
@@ -446,11 +448,11 @@ FeaturePlot(pbmc_filtered, features = existing_genes, pt.size = 0.2)
 
 ##Interpretation Paragraph
 
-Based on the candidate gene feature plots, key markers such as XIST, RPS4Y1, B2M, and S100A8 show robust detection across distinct cell populations. Specifically, sex-associated markers successfully differentiate cell distributions, while inflammatory and age-associated markers (e.g., S100A8 in monocytes) highlight active immune states. However, while we can observe these expression patterns across individual clusters and donors, we cannot definitively attribute these variations purely to systemic sex or age differences due to the limited cohort size and lack of biological replication per demographic group.
+Based on the candidate gene feature plots, key markers such as XIST, RPS4Y1, B2M, and S100A8 dhow robust detection across distinct cell populations. Specifically, sex-associated markers successfully differentiate cell distributions, while inflammatory and age-associated markers (e.g., S100A8 in monocytes) highlight active immune states. However, while we can observe these expression patterns across individual clusters and donors, we cannot definitively attribute these variations purely to systemic sex or age differences due to the limited cohort size and lack of biological replication per demographic group.
 
-\## Reasoning Prompt
+## Reasoning Prompt
 
-The current dataset design does not allow us to cleanly separate sex effects, age effects, donor-specific biological effects, and technical batch effects. This is because biological variables are inherently confounded with donor identities in this small cohort (e.g., specific donors represent specific age and sex brackets.) To resolve this limitation and answer these biological questions convincingly, a more rigorous, expanded study design would be required-specifically incorporating a balanced multi-donor cohort with multiple individuals per age group for both biological sexes, alongside standardized technical processing.
+The current dataset design does not allow us to cleanly separate sex effects, age effects, donor-spesific biological effects, and technical batch effects. This is because biological variables are inherently confounded with donor identities in this small cohort (e.g., specific donors represent specific age and sex brackets). To resolve this limitation and answer these biological questions convincingly, a more rigorous, expanded study design would be required- specifically incorporating a balanced multi-donor cohort with multiple individuals per age group for both biological sexes, alongside standardized technical processing.
 
 ```{r}
 sex_age_candidate_genes <- data.frame(
@@ -529,29 +531,29 @@ filtered_sex_results <- lapply(sex_de_results, function(df) {
 lapply(filtered_sex_results, head)
 ```
 
-\# Exploratory Sex-Associated Gene Expression Analysis in PBMC
+# Exploratory Sex-Associated Gene Expression Analysis in PBMC
 
-\## 1. Introduction and Quality Control
+## 1. Introduction and Quality Control
 
 In this analysis, we investigated sex-associated gene expression patterns across different PBMC cell types using a pseudobulk methodology. To account for biological replication properly and avoid psudoreplication errors, individual donors (\$n=4\$; 2 male, 2 female) were treated as the biological unit of analysis.
 
 Cell counts and distributions across donors were validated to ensure balanced representation:
 
--\*\***XIST Expression**\*\*: Strongly upregulated in female donors across major cell types (\$avg/\_log2FC/approx +14.2\$, $p_{adj} = 0$).
+-\*\***XIST Expression**\*\*: Strongly upregulated in female donors across major cell types (\$text{avg\_log2FC}/approx +14.2$\, $p_{text{adj}} = 0$).
 
--\*\***Y-Chromosome Markers**\*\*: Highly significant expression of Y-linked genes ("UTY", "RPS4Y1", "DDX3Y", "KDM5D", "USP9Y", "TXLNGY") exclusively in male donors (\$avg/\_log2FC/approx -9\$ to $-13$, $p_{adj} = 0$).
+-\*\***Y-Chromosome Markers**\*\*: Highly significant expression ($\text{avg\_log2FC}/approx -9.5$ to $-13.5$, $p_{\text{adj}} = 0$).
 
-\## 2. Autosomal Gene Expression Analysis (Post-Filtering)
+## 2. Autosomal Gene Expression Analysis (Post-Filtering)
 
-To isolate potential immune-related autosomal gene expression differences independent of direct sex-chromosome dosage, we filtered out all known sex-chromosome genes and mitochondrial transcripts ("MT-" genes) to eliminate technical or metabolic variance.
+To isolate potential immune-related autosomal gene expression differences independent of direct sex-chromosome dosage, we filtered out all known sex-chromosome genes and mitochondrial transcripts ($/text{MT-}$ genes) to eliminate technical or metabolic variance.
 
 Following this rigorous filtering:
 
 -No widespread or statistically robust differential expression patterns remained across autosomal genes.
 
--Only a minimal subset of genes ("FYB1", "LINC02899", "DISC1") showed marginal significance (\$p\_{adj}\<0.05\$).
+-Only a minimal subset of genes ("FYB1", "LINC02899", "DISC1") showed marginal significance ($p_{\text{adj}\<0.05$).
 
-\## 3. Discussion and Limitations
+## 3. Discussion and Limitations
 
 The primary finding confirms thatpsudobulk differential expression successfully captures core sex-linked signatures ("XIST" and Y-chromosomal genes). However, the absence of widespread autosomal differences highlights key experimental constraints:
 
@@ -579,7 +581,9 @@ ggplot(prop_df, aes(x = CellType, y = Proportion, fill = sex)) +
   labs(title = "Comparison of Cell Type Proportions by Sex",
        x = "Cell Type", y = "Proportion (%)", fill = "sex")
 ```
+# Comparison of Cell Type Proportions by Sex
 
+To evaluate whether cellular subset proportions exhibit broad sex-biased distributions, cell type percentages per donor were compared across biological sexes using box plots with overlaid individual data points. While certain lineages show apparent distributional shifts between female and male donors (e.g., within specific T cell or monocyte subsets), these observations must be interpreted with extreme caution. Given the small cohort size ($n=4$ total donors; 2 female, 2 male), biological sex is perfectly confounded with individual donor identity and technical batch variance. Consequently, these visual comparisons serve an exploratory purpose and cannot be used to establish statistically robust sex-specific cell type enrichment without a substantially larger, balanced cohort.
 ```         
 ```
 
